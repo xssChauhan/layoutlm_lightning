@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "layoutlm-lightning"
+version = "0.1.0"
+description = ""
+authors = ["Shikhar Chauhan <shikhar.chauhan@live.com>"]
+readme = "README.md"
+packages = [{include = "layoutlm_lightning"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+transformers = "^4.27.4"
+lightning = "^2.0.1"
+torch = "^2.0.0"
+click = "^8.1.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
