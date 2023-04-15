@@ -2,3 +2,4 @@
 .env
 *.pyc
 lightning_logs/
+mlruns/

@@ -1,6 +1,7 @@
 """Train a LayoutLM Model using PyTorch Lightning"""
 import click
 import lightning.pytorch as pl
+from lightning.pytorch.loggers import MLFlowLogger
 
 from layoutlm_lightning.module import LayoutLMLightningModule, FUNSDFormatDataModule
 
@@ -17,9 +18,16 @@ def main(data_dir, accelerator):
     datamodule = FUNSDFormatDataModule(data_dir=data_dir)
 
     logger.info("Training Model") 
-    trainer = pl.Trainer(accelerator=accelerator, fast_dev_run=True)
+    mlflow_logger = MLFlowLogger()
+    trainer = pl.Trainer(accelerator=accelerator, max_epochs=5, logger=mlflow_logger)
 
-    trainer.fit(model=LayoutLMLightningModule(), datamodule=datamodule)
+    trainer.fit(
+          model=LayoutLMLightningModule(
+                num_labels=datamodule.num_labels,
+                label_map=datamodule.label_map
+            ),
+            datamodule=datamodule
+        )
 
 if __name__ == "__main__":
         main()

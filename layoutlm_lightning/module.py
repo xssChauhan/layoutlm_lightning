@@ -1,4 +1,9 @@
+import torch
+
 import lightning.pytorch as pl
+from lightning.pytorch.loggers import MLFlowLogger
+
+from seqeval.metrics import f1_score, precision_score, recall_score, classification_report
 
 from transformers import LayoutLMForTokenClassification, LayoutLMTokenizer
 from transformers import AdamW
@@ -7,7 +12,7 @@ from pathlib import Path
 from layoutlm_lightning.dataset import FunsdDataset
 
 from torch.nn import CrossEntropyLoss
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
+from torch.utils.data import DataLoader, RandomSampler
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -58,7 +63,7 @@ class FUNSDFormatDataModule(pl.LightningDataModule):
             mode="train"
         )
         sampler = RandomSampler(dataset)
-        return DataLoader(dataset, sampler=sampler, batch_size=2)
+        return DataLoader(dataset, sampler=sampler, batch_size=4)
     
     def train_dataloader(self):
         return self.get_dataloader(mode="train")
@@ -68,22 +73,88 @@ class FUNSDFormatDataModule(pl.LightningDataModule):
 
 class LayoutLMLightningModule(pl.LightningModule):
     
-    def __init__(self):
+    def __init__(self, num_labels, label_map, pad_label_token_idx=-100):
         super().__init__()
-        self.model = LayoutLMForTokenClassification.from_pretrained("microsoft/layoutlm-base-uncased", num_labels=7)
+        #TODO parameterize labels
+        self.model = LayoutLMForTokenClassification.from_pretrained(
+            "microsoft/layoutlm-base-uncased",
+            num_labels=num_labels,
+        )
+
+        self.label_map = label_map
+        # for accumulating all validtion step outputs
+        self.validation_step_outputs = {
+            "preds":[],
+            "labels":[],
+        }
+
+    def generate_pred_from_label_map(self, preds, labels):
+
+        generated_labels = [[] for _ in range(labels.shape[0])]
+        generated_preds = [[] for _ in range(labels.shape[0])]
+
+        for i in range(labels.shape[0]):
+            for j in range(labels.shape[1]):
+                if labels[i, j] != -100:
+                    generated_labels[i].append(self.label_map[labels[i][j]])
+                    generated_preds[i].append(self.label_map[preds[i][j]])
+
+        return generated_preds, generated_labels
 
     def training_step(self, batch, batch_idx):
         # training_step defines the train loop.
         input_ids = batch[0]
-        bbox = batch[4]
         attention_mask = batch[1]
         token_type_ids = batch[2]
         labels = batch[3]
+        bbox = batch[4]
 
       # forward pass
         outputs = self.model(input_ids=input_ids, bbox=bbox, attention_mask=attention_mask, token_type_ids=token_type_ids,labels=labels)
         loss = outputs.loss
+        self.logger.log_metrics({
+            "training_loss": loss.item()
+        })
         return loss
+    
+    def validation_step(self, batch, batch_idx):
+        input_ids = batch[0]
+        attention_mask = batch[1]
+        token_type_ids = batch[2]
+        labels = batch[3]
+        bbox = batch[4]
+
+        outputs = self.model(
+            input_ids=input_ids, bbox=bbox, 
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,labels=labels
+        )
+        loss = outputs.loss
+        preds = outputs.logits.detach().cpu()
+        preds = preds.argmax(axis=2)
+
+        # Generate prediction as IOB and original length of labels
+        generated_preds, generated_labels = self.generate_pred_from_label_map(
+            preds.numpy(), labels.detach().cpu().numpy()
+        )
+        self.validation_step_outputs["preds"].append(generated_preds)
+        self.validation_step_outputs["labels"].append(generated_labels)
+
+        self.logger.log_metrics({
+            "val_loss": loss.item()
+        })
+        return preds
+    
+    def on_validation_epoch_end(self) -> None:
+        # all_preds = torch.stack(self.validation_step_outputs["preds"])
+        # all_labels = torch.sta
+        y_true = self.validation_step_outputs["labels"][0]
+        y_pred = self.validation_step_outputs["preds"][0]
+        classification_report = classification_report(
+            y_true, y_pred, output_dict=True
+        )
+
+        #TODO Flatten the classification report and log
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters())
