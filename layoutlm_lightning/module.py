@@ -1,3 +1,4 @@
+import collections
 import torch
 
 import lightning.pytorch as pl
@@ -19,6 +20,16 @@ class AttrDict(dict):
         super(AttrDict, self).__init__(*args, **kwargs)
         self.__dict__ = self
 
+
+def flatten(d, parent_key='', sep='_'):
+    items = []
+    for k, v in d.items():
+        new_key = parent_key + sep + k if parent_key else k
+        if isinstance(v, dict):
+            items.extend(flatten(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
 
 class FUNSDFormatDataModule(pl.LightningDataModule):
     def __init__(self, data_dir: Path):
@@ -150,11 +161,19 @@ class LayoutLMLightningModule(pl.LightningModule):
         # all_labels = torch.sta
         y_true = self.validation_step_outputs["labels"][0]
         y_pred = self.validation_step_outputs["preds"][0]
-        classification_report = classification_report(
+
+        val_classification_report = classification_report(
             y_true, y_pred, output_dict=True
         )
 
-        #TODO Flatten the classification report and log
+        # log the classification report for the epoch
+        flattened_preds = flatten(
+            val_classification_report
+        )
+        self.logger.log_metrics(
+            flattened_preds
+        )
+        return val_classification_report
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters())
