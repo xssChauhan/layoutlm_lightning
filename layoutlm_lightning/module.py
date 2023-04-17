@@ -1,4 +1,5 @@
 import collections
+import logging
 import torch
 
 import lightning.pytorch as pl
@@ -13,7 +14,10 @@ from pathlib import Path
 from layoutlm_lightning.dataset import FunsdDataset
 
 from torch.nn import CrossEntropyLoss
-from torch.utils.data import DataLoader, RandomSampler
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
+
+
+logger = logging.getLogger("lightning.pytorch")
 
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
@@ -71,9 +75,12 @@ class FUNSDFormatDataModule(pl.LightningDataModule):
             self.tokenizer,
             labels=self.labels,
             pad_token_label_id=self.pad_token_label_id,
-            mode="train"
+            mode=mode
         )
-        sampler = RandomSampler(dataset)
+        if mode == "train":
+            sampler = RandomSampler(dataset)
+        elif mode == "val":
+            sampler = SequentialSampler(dataset)
         return DataLoader(dataset, sampler=sampler, batch_size=4)
     
     def train_dataloader(self):
@@ -125,7 +132,7 @@ class LayoutLMLightningModule(pl.LightningModule):
         loss = outputs.loss
         self.logger.log_metrics({
             "training_loss": loss.item()
-        })
+        }, step=self.global_step)
         return loss
     
     def validation_step(self, batch, batch_idx):
@@ -153,7 +160,7 @@ class LayoutLMLightningModule(pl.LightningModule):
 
         self.logger.log_metrics({
             "val_loss": loss.item()
-        })
+        }, step=self.global_step)
         return preds
     
     def on_validation_epoch_end(self) -> None:
@@ -171,9 +178,9 @@ class LayoutLMLightningModule(pl.LightningModule):
             val_classification_report
         )
         self.logger.log_metrics(
-            flattened_preds
+            flattened_preds, step=self.global_step
         )
-        return val_classification_report
+        logger.info(classification_report(y_true, y_pred))
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters())

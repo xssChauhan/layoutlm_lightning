@@ -18,8 +18,8 @@ def main(data_dir, accelerator):
     datamodule = FUNSDFormatDataModule(data_dir=data_dir)
 
     logger.info("Training Model") 
-    mlflow_logger = MLFlowLogger()
-    trainer = pl.Trainer(accelerator=accelerator, max_epochs=5, logger=mlflow_logger)
+    mlflow_logger = MLFlowLogger(log_model=True)
+    trainer = pl.Trainer(accelerator=accelerator, max_epochs=2, logger=mlflow_logger)
 
     trainer.fit(
           model=LayoutLMLightningModule(
