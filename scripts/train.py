@@ -19,7 +19,7 @@ def main(data_dir, accelerator):
 
     logger.info("Training Model") 
     mlflow_logger = MLFlowLogger(log_model=True)
-    trainer = pl.Trainer(accelerator=accelerator, max_epochs=2, logger=mlflow_logger)
+    trainer = pl.Trainer(accelerator=accelerator, max_epochs=10, logger=mlflow_logger)
 
     trainer.fit(
           model=LayoutLMLightningModule(
