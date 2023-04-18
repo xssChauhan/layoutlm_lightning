@@ -81,7 +81,7 @@ class FUNSDFormatDataModule(pl.LightningDataModule):
             sampler = RandomSampler(dataset)
         elif mode == "val":
             sampler = SequentialSampler(dataset)
-        return DataLoader(dataset, sampler=sampler, batch_size=4)
+        return DataLoader(dataset, sampler=sampler, batch_size=2)
     
     def train_dataloader(self):
         return self.get_dataloader(mode="train")
@@ -136,6 +136,7 @@ class LayoutLMLightningModule(pl.LightningModule):
         return loss
     
     def validation_step(self, batch, batch_idx):
+        logger.info("Validation Step")
         input_ids = batch[0]
         attention_mask = batch[1]
         token_type_ids = batch[2]
@@ -155,8 +156,8 @@ class LayoutLMLightningModule(pl.LightningModule):
         generated_preds, generated_labels = self.generate_pred_from_label_map(
             preds.numpy(), labels.detach().cpu().numpy()
         )
-        self.validation_step_outputs["preds"].append(generated_preds)
-        self.validation_step_outputs["labels"].append(generated_labels)
+        self.validation_step_outputs["preds"].extend(generated_preds)
+        self.validation_step_outputs["labels"].extend(generated_labels)
 
         self.logger.log_metrics({
             "val_loss": loss.item()
@@ -166,8 +167,8 @@ class LayoutLMLightningModule(pl.LightningModule):
     def on_validation_epoch_end(self) -> None:
         # all_preds = torch.stack(self.validation_step_outputs["preds"])
         # all_labels = torch.sta
-        y_true = self.validation_step_outputs["labels"][0]
-        y_pred = self.validation_step_outputs["preds"][0]
+        y_true = self.validation_step_outputs["labels"]
+        y_pred = self.validation_step_outputs["preds"]
 
         val_classification_report = classification_report(
             y_true, y_pred, output_dict=True
@@ -181,7 +182,9 @@ class LayoutLMLightningModule(pl.LightningModule):
             flattened_preds, step=self.global_step
         )
         logger.info(classification_report(y_true, y_pred))
+        self.validation_step_outputs["preds"].clear()
+        self.validation_step_outputs["labels"].clear()
 
     def configure_optimizers(self):
-        optimizer = AdamW(self.parameters())
+        optimizer = AdamW(self.parameters(), lr=5e-5)
         return optimizer
